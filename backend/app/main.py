@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health, morning_report, settings, todos, voice
+from app.api import health, morning_report, settings, todos, vision, voice
+from app.ws import vision as vision_ws
 
 # Create FastAPI application
 app = FastAPI(
@@ -25,6 +26,10 @@ app.include_router(morning_report.router, tags=["morning-report"])
 app.include_router(todos.router, tags=["todos"])
 app.include_router(voice.router, tags=["voice"])
 app.include_router(settings.router, tags=["settings"])
+app.include_router(vision.router, tags=["vision"])
+
+# Include WebSocket routers
+app.include_router(vision_ws.router, tags=["websocket"])
 
 
 @app.get("/")

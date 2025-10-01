@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.models.global_dto import Settings
+from app.models.app_wide import Settings
 
 router = APIRouter()
 

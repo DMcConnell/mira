@@ -1,6 +1,6 @@
 from datetime import datetime, timezone, timedelta
 from typing import List
-from app.models.morning_report_dto import CalendarItem
+from app.models.morning_report import CalendarItem
 
 
 def get_calendar_items(limit: int = 10) -> List[CalendarItem]:

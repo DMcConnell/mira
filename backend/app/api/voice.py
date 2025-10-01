@@ -6,7 +6,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.api.todos import get_all_todos
-from app.models.morning_report_dto import Todo
+from app.models.morning_report import Todo
 from app.util.storage import read_json, write_json
 
 router = APIRouter()

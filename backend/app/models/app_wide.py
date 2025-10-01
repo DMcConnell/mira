@@ -1,3 +1,6 @@
+from pydantic import BaseModel
+
+
 class VisionIntent(BaseModel):
     tsISO: str
     gesture: str

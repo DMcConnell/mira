@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from typing import Optional
-from app.models.morning_report_dto import WeatherSnapshot
+from app.models.morning_report import WeatherSnapshot
 
 
 def get_weather_snapshot() -> WeatherSnapshot:

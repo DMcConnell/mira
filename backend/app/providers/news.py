@@ -1,6 +1,6 @@
 from datetime import datetime, timezone, timedelta
 from typing import List
-from app.models.morning_report_dto import NewsItem
+from app.models.morning_report import NewsItem
 
 
 def get_news_items(limit: int = 5) -> List[NewsItem]:

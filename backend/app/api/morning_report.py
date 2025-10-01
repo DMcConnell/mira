@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.models.morning_report_dto import MorningReport
+from app.models.morning_report import MorningReport
 from app.providers.calendar import get_calendar_items
 from app.providers.news import get_news_items
 from app.providers.weather import get_weather_snapshot
@@ -22,7 +22,7 @@ async def get_morning_report():
         return MorningReport(calendar=calendar, weather=weather, news=news, todos=todos)
     except Exception as e:
         # In case of any errors, return empty data rather than failing completely
-        from app.models.morning_report_dto import (
+        from app.models.morning_report import (
             CalendarItem,
             NewsItem,
             Todo,
