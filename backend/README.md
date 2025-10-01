@@ -187,7 +187,7 @@ The server runs in development mode with auto-reload enabled. Any code changes w
 
 ## Next Steps
 
-- [ ] Implement unit tests (see `tests/` directory)
+- [x] Implement unit tests (see `tests/` directory)
 - [ ] Replace mock providers with real API integrations
 - [ ] Add authentication/authorization
 - [ ] Implement WebSocket authentication
