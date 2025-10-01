@@ -26,25 +26,26 @@ export const Toast: React.FC<ToastProps> = ({
   }, [isVisible, duration, onClose]);
 
   const typeStyles = {
-    success: 'bg-green-600 text-white',
-    error: 'bg-red-600 text-white',
-    info: 'bg-blue-600 text-white',
+    success: 'bg-[#16a34a] border-[#22c55e]',
+    error: 'bg-[#dc2626] border-[#ef4444]',
+    info: 'bg-[#6366f1] border-[#818cf8]',
   };
 
   return (
     <AnimatePresence>
       {isVisible && (
         <motion.div
-          initial={{ opacity: 0, y: -50 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -50 }}
-          className={`fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 ${typeStyles[type]}`}
+          initial={{ opacity: 0, y: -20, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -20, scale: 0.95 }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
+          className={`fixed top-6 right-6 px-4 py-3 rounded-lg border z-50 ${typeStyles[type]} text-white shadow-lg`}
         >
-          <div className='flex items-center gap-2'>
-            <span>{message}</span>
+          <div className='flex items-center gap-3'>
+            <span className='text-sm font-medium'>{message}</span>
             <button
               onClick={onClose}
-              className='ml-2 text-white hover:text-gray-200 transition-colors'
+              className='text-white/80 hover:text-white transition-colors text-lg leading-none'
             >
               ×
             </button>

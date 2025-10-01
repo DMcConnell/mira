@@ -15,8 +15,8 @@ export const WeatherPanel: React.FC<WeatherPanelProps> = ({
     return (
       <Card title='Weather' className='h-full'>
         <div className='animate-pulse'>
-          <div className='h-16 bg-gray-300 dark:bg-gray-600 rounded mb-3'></div>
-          <div className='h-4 bg-gray-300 dark:bg-gray-600 rounded w-2/3'></div>
+          <div className='h-20 bg-[#27272a] rounded mb-3'></div>
+          <div className='h-4 bg-[#27272a] rounded w-2/3'></div>
         </div>
       </Card>
     );
@@ -25,33 +25,31 @@ export const WeatherPanel: React.FC<WeatherPanelProps> = ({
   if (!weather) {
     return (
       <Card title='Weather' className='h-full'>
-        <p className='text-gray-500 dark:text-gray-400'>
-          Weather data unavailable
-        </p>
+        <p className='text-[#71717a] text-sm'>Weather data unavailable</p>
       </Card>
     );
   }
 
   return (
     <Card title='Weather' className='h-full'>
-      <div className='flex items-center gap-4'>
-        <div className='text-5xl'>{weather.icon}</div>
+      <div className='flex items-center gap-5'>
+        <div className='text-6xl leading-none'>{weather.icon}</div>
         <div>
-          <div className='text-4xl font-bold'>
-            {Math.round(weather.tempC)}°C
+          <div className='text-4xl font-light text-[#fafafa] font-mono'>
+            {Math.round(weather.tempC)}°
           </div>
-          <div className='text-lg text-gray-600 dark:text-gray-400'>
+          <div className='text-base text-[#a1a1aa] mt-1'>
             {weather.condition}
           </div>
         </div>
       </div>
       {weather.stale && (
-        <div className='mt-3 text-sm text-yellow-600 dark:text-yellow-500'>
+        <div className='mt-4 text-xs text-[#fbbf24] bg-[#fbbf24]/10 border border-[#fbbf24]/20 px-3 py-2 rounded-lg'>
           ⚠️ Data may be stale
         </div>
       )}
-      <div className='mt-2 text-xs text-gray-500 dark:text-gray-500'>
-        Updated: {new Date(weather.updatedISO).toLocaleTimeString()}
+      <div className='mt-4 text-xs text-[#52525b]'>
+        Updated {new Date(weather.updatedISO).toLocaleTimeString()}
       </div>
     </Card>
   );

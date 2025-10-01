@@ -5,10 +5,12 @@ import type { VisionIntent } from '../../lib/types';
 
 interface VisionPanelProps {
   showPreview?: boolean;
+  compact?: boolean;
 }
 
 export const VisionPanel: React.FC<VisionPanelProps> = ({
   showPreview = true,
+  compact = false,
 }) => {
   const [latestIntent, setLatestIntent] = useState<VisionIntent | null>(null);
   const [fps, setFps] = useState(0);
@@ -30,7 +32,6 @@ export const VisionPanel: React.FC<VisionPanelProps> = ({
         const intent: VisionIntent = JSON.parse(event.data);
         setLatestIntent(intent);
 
-        // Calculate FPS
         const now = Date.now();
         const delta = now - lastUpdateRef.current;
         if (delta > 0) {
@@ -58,52 +59,62 @@ export const VisionPanel: React.FC<VisionPanelProps> = ({
 
   return (
     <Card title='Vision' className='h-full'>
-      <div className='space-y-3'>
+      <div className='space-y-4'>
         {showPreview && (
           <div className='relative'>
             <img
               src={getVisionSnapshotUrl()}
               alt='Vision snapshot'
-              className='w-full rounded-md'
+              className='w-full rounded-lg border border-[#27272a]'
             />
-            <div className='absolute top-2 right-2 bg-black bg-opacity-60 text-white px-2 py-1 rounded text-xs'>
+            <div className='absolute top-2 right-2 bg-black/70 text-white px-2 py-1 rounded text-xs font-mono'>
               {fps} FPS
+            </div>
+            <div
+              className={`absolute top-2 left-2 px-2 py-1 rounded text-xs font-medium ${
+                isConnected
+                  ? 'bg-[#22c55e]/20 text-[#22c55e] border border-[#22c55e]/30'
+                  : 'bg-[#ef4444]/20 text-[#ef4444] border border-[#ef4444]/30'
+              }`}
+            >
+              <span className='inline-block w-1.5 h-1.5 rounded-full bg-current mr-1.5' />
+              {isConnected ? 'Live' : 'Offline'}
             </div>
           </div>
         )}
 
-        <div className='space-y-2 text-sm'>
-          <div className='flex justify-between'>
-            <span className='text-gray-600 dark:text-gray-400'>Status:</span>
-            <span className={isConnected ? 'text-green-600' : 'text-red-600'}>
-              {isConnected ? '● Connected' : '○ Disconnected'}
-            </span>
+        {!compact && latestIntent && (
+          <div className='grid grid-cols-2 gap-3 text-sm'>
+            <div className='bg-[#18181b] border border-[#27272a] rounded-lg p-3'>
+              <div className='text-[#71717a] text-xs mb-1'>Gesture</div>
+              <div className='text-[#e4e4e7] font-medium'>
+                {latestIntent.gesture}
+              </div>
+            </div>
+            <div className='bg-[#18181b] border border-[#27272a] rounded-lg p-3'>
+              <div className='text-[#71717a] text-xs mb-1'>Confidence</div>
+              <div className='text-[#e4e4e7] font-medium font-mono'>
+                {(latestIntent.confidence * 100).toFixed(0)}%
+              </div>
+            </div>
+            <div className='bg-[#18181b] border border-[#27272a] rounded-lg p-3'>
+              <div className='text-[#71717a] text-xs mb-1'>Armed</div>
+              <div className='text-[#e4e4e7] font-medium'>
+                {latestIntent.armed ? 'Yes' : 'No'}
+              </div>
+            </div>
+            <div className='bg-[#18181b] border border-[#27272a] rounded-lg p-3'>
+              <div className='text-[#71717a] text-xs mb-1'>Updated</div>
+              <div className='text-[#e4e4e7] font-medium text-xs'>
+                {new Date(latestIntent.tsISO).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                })}
+              </div>
+            </div>
           </div>
-
-          {latestIntent && (
-            <>
-              <div className='flex justify-between'>
-                <span className='text-gray-600 dark:text-gray-400'>
-                  Gesture:
-                </span>
-                <span className='font-medium'>{latestIntent.gesture}</span>
-              </div>
-              <div className='flex justify-between'>
-                <span className='text-gray-600 dark:text-gray-400'>
-                  Confidence:
-                </span>
-                <span>{(latestIntent.confidence * 100).toFixed(1)}%</span>
-              </div>
-              <div className='flex justify-between'>
-                <span className='text-gray-600 dark:text-gray-400'>Armed:</span>
-                <span>{latestIntent.armed ? '✓' : '✗'}</span>
-              </div>
-              <div className='text-xs text-gray-500 dark:text-gray-500 mt-2'>
-                Last update: {new Date(latestIntent.tsISO).toLocaleTimeString()}
-              </div>
-            </>
-          )}
-        </div>
+        )}
       </div>
     </Card>
   );

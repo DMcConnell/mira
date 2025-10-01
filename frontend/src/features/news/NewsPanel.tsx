@@ -17,8 +17,8 @@ export const NewsPanel: React.FC<NewsPanelProps> = ({
         <div className='space-y-3'>
           {[1, 2, 3].map((i) => (
             <div key={i} className='animate-pulse'>
-              <div className='h-4 bg-gray-300 dark:bg-gray-600 rounded w-full mb-2'></div>
-              <div className='h-3 bg-gray-300 dark:bg-gray-600 rounded w-1/3'></div>
+              <div className='h-4 bg-[#27272a] rounded w-full mb-2'></div>
+              <div className='h-3 bg-[#27272a] rounded w-1/3'></div>
             </div>
           ))}
         </div>
@@ -29,21 +29,21 @@ export const NewsPanel: React.FC<NewsPanelProps> = ({
   return (
     <Card title='News' className='h-full'>
       {items.length === 0 ? (
-        <p className='text-gray-500 dark:text-gray-400'>No news available</p>
+        <p className='text-[#71717a] text-sm'>No news available</p>
       ) : (
-        <div className='space-y-3 max-h-96 overflow-y-auto'>
+        <div className='space-y-2 max-h-80 overflow-y-auto'>
           {items.map((item) => (
             <a
               key={item.id}
               href={item.url}
               target='_blank'
               rel='noopener noreferrer'
-              className='block hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded transition-colors'
+              className='block hover:bg-[#18181b] p-3 -mx-1 rounded-lg transition-colors'
             >
-              <h4 className='font-medium text-sm leading-tight mb-1'>
+              <h4 className='font-medium text-sm leading-snug text-[#e4e4e7] mb-1.5'>
                 {item.title}
               </h4>
-              <div className='flex justify-between items-center text-xs text-gray-500 dark:text-gray-500'>
+              <div className='flex justify-between items-center text-xs text-[#71717a]'>
                 <span>{item.source}</span>
                 <span>{new Date(item.publishedISO).toLocaleDateString()}</span>
               </div>

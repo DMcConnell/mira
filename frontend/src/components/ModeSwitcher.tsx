@@ -14,23 +14,25 @@ export const ModeSwitcher: React.FC<ModeSwitcherProps> = ({
   className = '',
 }) => {
   return (
-    <div className={`flex gap-2 ${className}`}>
+    <div
+      className={`flex gap-1 bg-[#18181b] border border-[#27272a] rounded-lg p-1 ${className}`}
+    >
       <button
         onClick={() => onModeChange('morning')}
-        className={`px-4 py-2 rounded-md transition-colors ${
+        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
           mode === 'morning'
-            ? 'bg-blue-600 text-white'
-            : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
+            ? 'bg-[#6366f1] text-white'
+            : 'text-[#a1a1aa] hover:text-[#e4e4e7]'
         }`}
       >
         Morning
       </button>
       <button
         onClick={() => onModeChange('ambient')}
-        className={`px-4 py-2 rounded-md transition-colors ${
+        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
           mode === 'ambient'
-            ? 'bg-blue-600 text-white'
-            : 'bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
+            ? 'bg-[#6366f1] text-white'
+            : 'text-[#a1a1aa] hover:text-[#e4e4e7]'
         }`}
       >
         Ambient

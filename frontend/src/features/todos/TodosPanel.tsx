@@ -39,8 +39,8 @@ export const TodosPanel: React.FC<TodosPanelProps> = ({
         <div className='space-y-2'>
           {[1, 2, 3].map((i) => (
             <div key={i} className='animate-pulse flex items-center gap-2'>
-              <div className='w-4 h-4 bg-gray-300 dark:bg-gray-600 rounded'></div>
-              <div className='h-4 bg-gray-300 dark:bg-gray-600 rounded flex-1'></div>
+              <div className='w-4 h-4 bg-[#27272a] rounded'></div>
+              <div className='h-4 bg-[#27272a] rounded flex-1'></div>
             </div>
           ))}
         </div>
@@ -56,49 +56,47 @@ export const TodosPanel: React.FC<TodosPanelProps> = ({
             type='text'
             value={newTodoText}
             onChange={(e) => setNewTodoText(e.target.value)}
-            placeholder='Add a new task...'
-            className='flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+            placeholder='Add a task...'
+            className='flex-1 px-3 py-2 border border-[#27272a] rounded-lg bg-[#18181b] text-[#e4e4e7] text-sm placeholder:text-[#52525b] focus:outline-none focus:ring-2 focus:ring-[#6366f1] focus:border-transparent'
             disabled={isAdding}
           />
           <button
             type='submit'
             disabled={isAdding || !newTodoText.trim()}
-            className='px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors'
+            className='px-4 py-2 bg-[#6366f1] text-white rounded-lg hover:bg-[#5558e3] disabled:opacity-40 disabled:cursor-not-allowed transition-all text-sm font-medium'
           >
             Add
           </button>
         </div>
       </form>
 
-      <div className='space-y-2 max-h-64 overflow-y-auto'>
+      <div className='space-y-1.5 max-h-64 overflow-y-auto'>
         {todos.length === 0 ? (
-          <p className='text-gray-500 dark:text-gray-400 text-sm'>
+          <p className='text-[#71717a] text-sm text-center py-4'>
             No tasks yet
           </p>
         ) : (
           todos.map((todo) => (
             <div
               key={todo.id}
-              className='flex items-center gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded transition-colors group'
+              className='flex items-center gap-3 p-2 hover:bg-[#18181b] rounded-lg transition-colors group'
             >
               <input
                 type='checkbox'
                 checked={todo.done}
                 onChange={(e) => onToggle(todo.id, e.target.checked)}
-                className='w-4 h-4 cursor-pointer'
+                className='w-4 h-4 cursor-pointer accent-[#6366f1]'
               />
               <span
-                className={`flex-1 ${
-                  todo.done
-                    ? 'line-through text-gray-500 dark:text-gray-500'
-                    : ''
+                className={`flex-1 text-sm ${
+                  todo.done ? 'line-through text-[#52525b]' : 'text-[#e4e4e7]'
                 }`}
               >
                 {todo.text}
               </span>
               <button
                 onClick={() => onDelete(todo.id)}
-                className='text-red-600 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity'
+                className='text-[#dc2626] hover:text-[#ef4444] opacity-0 group-hover:opacity-100 transition-all text-lg leading-none'
               >
                 ×
               </button>
