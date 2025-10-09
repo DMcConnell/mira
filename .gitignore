@@ -1,2 +1,19 @@
+# Environment files (contain secrets)
+.env
+.env.local
+.env.*.local
+
+# Custom scripts
 ssh_mira.sh
 build.sh
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

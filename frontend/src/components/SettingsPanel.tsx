@@ -12,6 +12,10 @@ interface SettingsPanelProps {
     connected: boolean;
     latestIntent: VisionIntent | null;
   };
+  controlPlaneStatus?: {
+    connected: boolean;
+    lastUpdate: string | null;
+  };
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({
@@ -21,6 +25,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onSettingsChange,
   lastApiLatency,
   visionStatus,
+  controlPlaneStatus,
 }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -213,6 +218,45 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   </div>
                 </div>
               </section>
+
+              {/* Control Plane Status */}
+              {controlPlaneStatus && (
+                <section className='mb-6'>
+                  <h3 className='text-xs font-semibold text-[#71717a] uppercase tracking-wide mb-3'>
+                    Control Plane
+                  </h3>
+                  <div className='bg-[#111115] border border-[#27272a] rounded-lg p-4'>
+                    <div className='space-y-3 text-sm'>
+                      <div className='flex justify-between items-center'>
+                        <span className='text-[#a1a1aa]'>Status</span>
+                        <span
+                          className={`flex items-center gap-1.5 font-medium ${
+                            controlPlaneStatus.connected
+                              ? 'text-[#22c55e]'
+                              : 'text-[#ef4444]'
+                          }`}
+                        >
+                          <span className='w-1.5 h-1.5 rounded-full bg-current' />
+                          {controlPlaneStatus.connected
+                            ? 'Connected'
+                            : 'Disconnected'}
+                        </span>
+                      </div>
+
+                      {controlPlaneStatus.lastUpdate && (
+                        <div className='flex justify-between items-center'>
+                          <span className='text-[#a1a1aa]'>Last Update</span>
+                          <span className='text-[#e4e4e7] font-mono text-xs'>
+                            {new Date(
+                              controlPlaneStatus.lastUpdate,
+                            ).toLocaleTimeString()}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </section>
+              )}
 
               {/* Keyboard Shortcuts */}
               <section>

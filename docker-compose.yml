@@ -11,7 +11,9 @@ services:
     build: ./control-plane
     ports: ['8090:8090']
     environment:
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DEBUG=${DEBUG:-false}
     volumes:
       - ./control-plane/data:/app/data
     depends_on:
@@ -22,12 +24,21 @@ services:
     build: ./backend
     ports: ['8080:8080']
     environment:
-      - DATA_DIR=/app/data
-      - PROVIDERS_WEATHER_MODE=mock
-      - PROVIDERS_NEWS_MODE=mock
-      - CONTROL_PLANE_URL=http://control-plane:8090
+      - DATA_DIR=${DATA_DIR:-/app/data}
+      - PROVIDERS_WEATHER_MODE=${PROVIDERS_WEATHER_MODE:-mock}
+      - PROVIDERS_NEWS_MODE=${PROVIDERS_NEWS_MODE:-mock}
+      - CONTROL_PLANE_URL=${CONTROL_PLANE_URL:-http://control-plane:8090}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - CONTROL_PLANE_DB=${CONTROL_PLANE_DB:-/app/data/control_plane.db}
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production}
+      - MIRA_PIN=${MIRA_PIN:-1234}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DEBUG=${DEBUG:-false}
+    volumes:
+      - ./control-plane/data:/app/data
     depends_on:
       - control-plane
+      - redis
 
   web:
     restart: unless-stopped

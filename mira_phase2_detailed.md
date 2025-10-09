@@ -316,11 +316,15 @@ Ensure `sqlite3` file is on shared volume mounted rw.
 - [x] WebSocket endpoint for real-time state updates.
 - [x] Core schemas (Command, Event, StatePatch) implemented.
 
-**Guide 2 - App API Refactor** 🚧 PENDING
+**Guide 2 - App API Refactor** ✅ COMPLETED (Oct 9, 2025)
 
-- [ ] App API proxies commands to Control Plane.
-- [ ] Frontend updated to use `/ws/state` endpoint.
-- [ ] Auth PIN → JWT implemented.
+- [x] App API proxies commands to Control Plane.
+- [x] Frontend updated to use `/ws/state` endpoint.
+- [x] Auth PIN → JWT implemented.
+- [x] State snapshot endpoint implemented.
+- [x] Redis Pub/Sub integration in backend.
+- [x] State patch handling in frontend.
+- [x] Control Plane connection indicator in UI.
 
 **Guide 3 - Integration** 🚧 PENDING
 

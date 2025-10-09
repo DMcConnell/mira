@@ -88,4 +88,25 @@ export const getVisionWebSocketUrl = (): string => {
   return `${wsProtocol}://${url}/ws/vision`;
 };
 
+// WebSocket URL for state updates
+export const getStateWebSocketUrl = (): string => {
+  const wsProtocol = BASE_URL.startsWith('https') ? 'wss' : 'ws';
+  const url = BASE_URL.replace(/^https?:\/\//, '');
+  return `${wsProtocol}://${url}/ws/state`;
+};
+
+// Command API - send commands to Control Plane
+export const sendCommand = async (
+  command: import('./types').Command,
+): Promise<{ status: string; payload: unknown }> => {
+  const response = await api.post('/api/v1/command', command);
+  return response.data;
+};
+
+// State API - get current state snapshot
+export const getState = async (): Promise<import('./types').AppState> => {
+  const response = await api.get('/api/v1/state');
+  return response.data;
+};
+
 export default api;

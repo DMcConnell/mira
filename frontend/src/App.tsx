@@ -13,7 +13,14 @@ import {
   type AppMode,
   type ToastType,
 } from './components';
-import type { MorningReport, Todo, Settings, VisionIntent } from './lib/types';
+import type {
+  MorningReport,
+  Todo,
+  Settings,
+  VisionIntent,
+  StatePatch,
+  AppState,
+} from './lib/types';
 import {
   getMorningReport,
   createTodo,
@@ -23,6 +30,8 @@ import {
   getSettings,
   updateSettings as updateSettingsApi,
   getVisionWebSocketUrl,
+  getStateWebSocketUrl,
+  getState,
 } from './lib/api';
 
 interface ToastState {
@@ -66,6 +75,17 @@ function App() {
     latestIntent: null,
   });
   const wsRef = useRef<WebSocket | null>(null);
+
+  // Control Plane state WebSocket
+  const [controlPlaneStatus, setControlPlaneStatus] = useState<{
+    connected: boolean;
+    lastUpdate: string | null;
+  }>({
+    connected: false,
+    lastUpdate: null,
+  });
+  const stateWsRef = useRef<WebSocket | null>(null);
+  // const [appState, setAppState] = useState<AppState | null>(null);
 
   // Show toast helper
   const showToast = useCallback((message: string, type: ToastType = 'info') => {
@@ -130,6 +150,62 @@ function App() {
     fetchSettings();
   }, [fetchMorningReport, fetchSettings]);
 
+  // Fetch initial state from Control Plane
+  useEffect(() => {
+    const fetchInitialState = async () => {
+      try {
+        const state = await getState();
+        setAppState(state);
+        console.log('Initial state loaded:', state);
+      } catch (err) {
+        console.error('Failed to fetch initial state:', err);
+      }
+    };
+    fetchInitialState();
+  }, []);
+
+  // Apply state patch to current state
+  const applyStatePatch = useCallback(
+    (patch: StatePatch) => {
+      console.log('Applying state patch:', patch);
+
+      setControlPlaneStatus((prev) => ({
+        ...prev,
+        lastUpdate: patch.ts,
+      }));
+
+      // Simple path-based state updates
+      // For now, just handle a few common patterns
+      if (patch.path === '/mode') {
+        setMode(patch.value as AppMode);
+        showToast(`Mode switched to ${patch.value}`, 'info');
+      } else if (patch.path === '/todos/+') {
+        // Add new todo
+        const newTodo = patch.value as Todo;
+        setTodos((prev) => [...prev, newTodo]);
+        showToast('Todo added via Control Plane', 'success');
+      } else if (patch.path.startsWith('/todos/')) {
+        // Update specific todo (not implemented in this phase)
+        console.log('Todo update:', patch);
+      } else if (patch.path === '/gesture') {
+        // Update gesture state
+        setAppState((prev) => ({ ...prev, gesture: patch.value as string }));
+      }
+
+      // Update the full app state
+      setAppState((prev) => {
+        const newState = { ...prev };
+        // Simple path handling for now
+        const pathParts = patch.path.split('/').filter((p) => p);
+        if (pathParts.length === 1) {
+          newState[pathParts[0]] = patch.value;
+        }
+        return newState;
+      });
+    },
+    [showToast],
+  );
+
   // Setup Vision WebSocket
   useEffect(() => {
     const connectWebSocket = () => {
@@ -173,6 +249,50 @@ function App() {
       wsRef.current?.close();
     };
   }, []);
+
+  // Setup State WebSocket (Control Plane)
+  useEffect(() => {
+    const connectStateWebSocket = () => {
+      try {
+        const ws = new WebSocket(getStateWebSocketUrl());
+        stateWsRef.current = ws;
+
+        ws.onopen = () => {
+          setControlPlaneStatus((prev) => ({ ...prev, connected: true }));
+          console.log('Control Plane WebSocket connected');
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const patch: StatePatch = JSON.parse(event.data);
+            applyStatePatch(patch);
+          } catch (error) {
+            console.error('Failed to parse state patch:', error);
+          }
+        };
+
+        ws.onerror = (error) => {
+          console.error('Control Plane WebSocket error:', error);
+        };
+
+        ws.onclose = () => {
+          setControlPlaneStatus((prev) => ({ ...prev, connected: false }));
+          console.log('Control Plane WebSocket disconnected');
+          // Attempt to reconnect after 5 seconds
+          setTimeout(connectStateWebSocket, 5000);
+        };
+      } catch (error) {
+        console.error('Failed to connect State WebSocket:', error);
+        setTimeout(connectStateWebSocket, 5000);
+      }
+    };
+
+    connectStateWebSocket();
+
+    return () => {
+      stateWsRef.current?.close();
+    };
+  }, [applyStatePatch]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -406,6 +526,7 @@ function App() {
         onSettingsChange={handleUpdateSettings}
         lastApiLatency={lastApiLatency}
         visionStatus={visionStatus}
+        controlPlaneStatus={controlPlaneStatus}
       />
 
       {/* Toast Notifications */}

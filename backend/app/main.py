@@ -1,7 +1,18 @@
+import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health, morning_report, settings, todos, vision, voice
+from app.api import (
+    auth,
+    command,
+    health,
+    morning_report,
+    settings,
+    todos,
+    vision,
+    voice,
+)
+from app.ws import state as state_ws
 from app.ws import vision as vision_ws
 
 # Create FastAPI application
@@ -21,6 +32,8 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(auth.router, tags=["auth"])
+app.include_router(command.router, tags=["command"])
 app.include_router(health.router, tags=["health"])
 app.include_router(morning_report.router, tags=["morning-report"])
 app.include_router(todos.router, tags=["todos"])
@@ -29,7 +42,15 @@ app.include_router(settings.router, tags=["settings"])
 app.include_router(vision.router, tags=["vision"])
 
 # Include WebSocket routers
+app.include_router(state_ws.router, tags=["websocket"])
 app.include_router(vision_ws.router, tags=["websocket"])
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Start background tasks on application startup."""
+    # Start Redis subscriber for state updates
+    asyncio.create_task(state_ws.redis_subscriber())
 
 
 @app.get("/")

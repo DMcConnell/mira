@@ -63,3 +63,24 @@ export interface HealthResponse {
   status: string;
   summary?: string;
 }
+
+export interface Command {
+  id?: string;
+  ts?: string;
+  source: 'voice' | 'gesture' | 'system';
+  action: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface StatePatch {
+  ts: string;
+  path: string;
+  value: unknown;
+}
+
+export interface AppState {
+  mode?: string;
+  todos?: Todo[];
+  gesture?: string;
+  [key: string]: unknown;
+}
