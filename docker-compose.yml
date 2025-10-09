@@ -1,4 +1,22 @@
 services:
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports: ['6379:6379']
+    volumes:
+      - redis_data:/data
+
+  control-plane:
+    restart: unless-stopped
+    build: ./control-plane
+    ports: ['8090:8090']
+    environment:
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./control-plane/data:/app/data
+    depends_on:
+      - redis
+
   server:
     restart: unless-stopped
     build: ./backend
@@ -7,9 +25,17 @@ services:
       - DATA_DIR=/app/data
       - PROVIDERS_WEATHER_MODE=mock
       - PROVIDERS_NEWS_MODE=mock
+      - CONTROL_PLANE_URL=http://control-plane:8090
+    depends_on:
+      - control-plane
 
   web:
     restart: unless-stopped
     build: ./frontend
     ports: ['80:80']
-    depends_on: [server]
+    depends_on:
+      - server
+      - control-plane
+
+volumes:
+  redis_data:
