@@ -1,17 +1,20 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.models.morning_report import MorningReport
 from app.providers.calendar import get_calendar_items
 from app.providers.news import get_news_items
 from app.providers.weather import get_weather_snapshot
 from app.api.todos import get_all_todos
+from app.util.auth import require_capability, TokenData
 
 router = APIRouter()
 
 
 @router.get("/api/v1/morning-report", response_model=MorningReport)
-async def get_morning_report():
-    """Get the morning report aggregating all data sources."""
+async def get_morning_report(
+    token: TokenData = Depends(require_capability("command.send")),
+):
+    """Get the morning report aggregating all data sources. Requires 'command.send' capability."""
     try:
         # Fetch data from all providers
         calendar = get_calendar_items(limit=10)

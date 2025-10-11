@@ -14,7 +14,7 @@ httptools==0.6.4
 httpx==0.25.1
 idna==3.10
 iniconfig==2.1.0
-jwt==1.4.0
+PyJWT==2.8.0
 packaging==25.0
 pluggy==1.6.0
 pycparser==2.23

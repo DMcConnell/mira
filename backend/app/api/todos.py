@@ -2,11 +2,12 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from app.models.morning_report import Todo
 from app.util.storage import read_json, write_json
+from app.util.auth import require_capability, TokenData
 
 router = APIRouter()
 
@@ -21,8 +22,8 @@ class UpdateTodoRequest(BaseModel):
 
 
 @router.get("/api/v1/todos", response_model=List[Todo])
-async def get_todos():
-    """Get all todos."""
+async def get_todos(token: TokenData = Depends(require_capability("command.send"))):
+    """Get all todos. Requires 'command.send' capability."""
     try:
         todos_data = read_json()
         return [Todo(**todo) for todo in todos_data]
@@ -31,8 +32,11 @@ async def get_todos():
 
 
 @router.post("/api/v1/todos", response_model=Todo)
-async def create_todo(request: CreateTodoRequest):
-    """Create a new todo."""
+async def create_todo(
+    request: CreateTodoRequest,
+    token: TokenData = Depends(require_capability("command.send")),
+):
+    """Create a new todo. Requires 'command.send' capability."""
     try:
         todos_data = read_json()
 
@@ -52,8 +56,10 @@ async def create_todo(request: CreateTodoRequest):
 
 
 @router.get("/api/v1/todos/{todo_id}", response_model=Todo)
-async def get_todo(todo_id: str):
-    """Get a specific todo by ID."""
+async def get_todo(
+    todo_id: str, token: TokenData = Depends(require_capability("command.send"))
+):
+    """Get a specific todo by ID. Requires 'command.send' capability."""
     try:
         todos_data = read_json()
         for todo in todos_data:
@@ -68,8 +74,12 @@ async def get_todo(todo_id: str):
 
 
 @router.put("/api/v1/todos/{todo_id}", response_model=Todo)
-async def update_todo(todo_id: str, request: UpdateTodoRequest):
-    """Update a specific todo by ID."""
+async def update_todo(
+    todo_id: str,
+    request: UpdateTodoRequest,
+    token: TokenData = Depends(require_capability("command.send")),
+):
+    """Update a specific todo by ID. Requires 'command.send' capability."""
     try:
         todos_data = read_json()
 
@@ -94,8 +104,10 @@ async def update_todo(todo_id: str, request: UpdateTodoRequest):
 
 
 @router.delete("/api/v1/todos/{todo_id}")
-async def delete_todo(todo_id: str):
-    """Delete a specific todo by ID."""
+async def delete_todo(
+    todo_id: str, token: TokenData = Depends(require_capability("command.send"))
+):
+    """Delete a specific todo by ID. Requires 'command.send' capability."""
     try:
         todos_data = read_json()
 

@@ -7,6 +7,7 @@ import type {
   VoiceInterpretResponse,
   HealthResponse,
 } from './types';
+import { authService } from './auth';
 
 // Get base URL from environment variable, default to localhost:8080
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
@@ -18,6 +19,29 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// Add token to all requests
+api.interceptors.request.use((config) => {
+  const token = authService.getToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Handle 401 responses (unauthorized)
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Token expired or invalid - clear it
+      authService.clearToken();
+      // Trigger re-authentication (will be handled by App component)
+      window.dispatchEvent(new Event('auth:required'));
+    }
+    return Promise.reject(error);
+  },
+);
 
 // Health endpoint
 export const getHealth = async (): Promise<HealthResponse> => {

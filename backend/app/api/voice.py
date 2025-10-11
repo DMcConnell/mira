@@ -2,12 +2,13 @@ import re
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from app.api.todos import get_all_todos
 from app.models.morning_report import Todo
 from app.util.storage import read_json, write_json
+from app.util.auth import require_capability, TokenData
 
 router = APIRouter()
 
@@ -24,10 +25,14 @@ class VoiceInterpretResponse(BaseModel):
 
 
 @router.post("/api/v1/voice/interpret", response_model=VoiceInterpretResponse)
-async def interpret_voice(request: VoiceInterpretRequest):
+async def interpret_voice(
+    request: VoiceInterpretRequest,
+    token: TokenData = Depends(require_capability("command.send")),
+):
     """
     Mock voice intent parser using regex patterns.
     Supports: switch to (ambient|morning), add todo (.*), else unknown.
+    Requires 'command.send' capability.
     """
     text = request.text.lower().strip()
 

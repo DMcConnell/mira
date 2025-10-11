@@ -10,9 +10,11 @@ import {
   Toast,
   TextCommandModal,
   SettingsPanel,
+  LoginModal,
   type AppMode,
   type ToastType,
 } from './components';
+import { authService } from './lib/auth';
 import type {
   MorningReport,
   Todo,
@@ -48,6 +50,14 @@ function App() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Authentication state
+  const [isAuthenticated, setIsAuthenticated] = useState(
+    authService.isAuthenticated(),
+  );
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(
+    !authService.isAuthenticated(),
+  );
 
   // Modal/Panel states
   const [isCommandModalOpen, setIsCommandModalOpen] = useState(false);
@@ -85,7 +95,8 @@ function App() {
     lastUpdate: null,
   });
   const stateWsRef = useRef<WebSocket | null>(null);
-  // const [appState, setAppState] = useState<AppState | null>(null);
+  // State tracking - will be used in future phases
+  const [appState, setAppState] = useState<AppState | null>(null);
 
   // Show toast helper
   const showToast = useCallback((message: string, type: ToastType = 'info') => {
@@ -100,6 +111,7 @@ function App() {
   // Fetch morning report data
   const fetchMorningReport = useCallback(async () => {
     try {
+      console.log('appState', appState);
       setLoading(true);
       setError(null);
       const startTime = Date.now();
@@ -144,14 +156,40 @@ function App() {
     [showToast],
   );
 
-  // Initial data fetch
+  // Handle authentication required event
   useEffect(() => {
+    const handleAuthRequired = () => {
+      setIsAuthenticated(false);
+      setIsLoginModalOpen(true);
+    };
+
+    window.addEventListener('auth:required', handleAuthRequired);
+    return () =>
+      window.removeEventListener('auth:required', handleAuthRequired);
+  }, []);
+
+  // Handle successful login
+  const handleLoginSuccess = useCallback(() => {
+    setIsAuthenticated(true);
+    setIsLoginModalOpen(false);
+    showToast('Successfully authenticated', 'success');
+    // Fetch data after successful login
     fetchMorningReport();
     fetchSettings();
-  }, [fetchMorningReport, fetchSettings]);
+  }, [fetchMorningReport, fetchSettings, showToast]);
 
-  // Fetch initial state from Control Plane
+  // Initial data fetch (only if authenticated)
   useEffect(() => {
+    if (isAuthenticated) {
+      fetchMorningReport();
+      fetchSettings();
+    }
+  }, [isAuthenticated, fetchMorningReport, fetchSettings]);
+
+  // Fetch initial state from Control Plane (only if authenticated)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
     const fetchInitialState = async () => {
       try {
         const state = await getState();
@@ -162,7 +200,7 @@ function App() {
       }
     };
     fetchInitialState();
-  }, []);
+  }, [isAuthenticated]);
 
   // Apply state patch to current state
   const applyStatePatch = useCallback(
@@ -206,8 +244,10 @@ function App() {
     [showToast],
   );
 
-  // Setup Vision WebSocket
+  // Setup Vision WebSocket (only if authenticated)
   useEffect(() => {
+    if (!isAuthenticated) return;
+
     const connectWebSocket = () => {
       try {
         const ws = new WebSocket(getVisionWebSocketUrl());
@@ -248,10 +288,12 @@ function App() {
     return () => {
       wsRef.current?.close();
     };
-  }, []);
+  }, [isAuthenticated]);
 
-  // Setup State WebSocket (Control Plane)
+  // Setup State WebSocket (Control Plane, only if authenticated)
   useEffect(() => {
+    if (!isAuthenticated) return;
+
     const connectStateWebSocket = () => {
       try {
         const ws = new WebSocket(getStateWebSocketUrl());
@@ -292,7 +334,7 @@ function App() {
     return () => {
       stateWsRef.current?.close();
     };
-  }, [applyStatePatch]);
+  }, [isAuthenticated, applyStatePatch]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -528,6 +570,9 @@ function App() {
         visionStatus={visionStatus}
         controlPlaneStatus={controlPlaneStatus}
       />
+
+      {/* Login Modal */}
+      <LoginModal isOpen={isLoginModalOpen} onSuccess={handleLoginSuccess} />
 
       {/* Toast Notifications */}
       <Toast

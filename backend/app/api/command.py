@@ -6,10 +6,11 @@ import os
 import json
 import aiosqlite
 from typing import Any, Dict
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 import httpx
 
 from app.models.app_wide import Command
+from app.util.auth import require_capability, TokenData
 
 router = APIRouter()
 
@@ -18,10 +19,13 @@ DB_PATH = os.getenv("CONTROL_PLANE_DB", "/app/data/control_plane.db")
 
 
 @router.post("/api/v1/command")
-async def send_command(cmd: Command):
+async def send_command(
+    cmd: Command, token: TokenData = Depends(require_capability("command.send"))
+):
     """
     Proxy a command to the Control Plane service.
     The Control Plane will process it and broadcast state patches via Redis.
+    Requires 'command.send' capability.
     """
     try:
         async with httpx.AsyncClient() as client:
@@ -40,10 +44,13 @@ async def send_command(cmd: Command):
 
 
 @router.get("/api/v1/state")
-async def get_state() -> Dict[str, Any]:
+async def get_state(
+    token: TokenData = Depends(require_capability("command.send")),
+) -> Dict[str, Any]:
     """
     Get the latest state snapshot from the Control Plane database.
     Returns the most recent snapshot or an empty state if none exists.
+    Requires 'command.send' capability.
     """
     try:
         async with aiosqlite.connect(DB_PATH) as db:
