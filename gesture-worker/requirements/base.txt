@@ -1,0 +1,5 @@
+mediapipe==0.10.18
+httpx>=0.27
+numpy>=1.26
+opencv-python-headless
+redis==5.0.1

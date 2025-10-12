@@ -51,6 +51,8 @@ async def startup_event():
     """Start background tasks on application startup."""
     # Start Redis subscriber for state updates
     asyncio.create_task(state_ws.redis_subscriber())
+    # Start Redis subscriber for vision updates
+    asyncio.create_task(vision_ws.redis_vision_subscriber())
 
 
 @app.get("/")

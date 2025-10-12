@@ -1,0 +1,58 @@
+# Systemd service file for Mira Gesture Worker
+# 
+# Installation:
+#   1. Edit paths and user below to match your setup
+#   2. sudo cp mira-gesture-worker.service /etc/systemd/system/
+#   3. sudo systemctl daemon-reload
+#   4. sudo systemctl enable mira-gesture-worker
+#   5. sudo systemctl start mira-gesture-worker
+#
+# Management:
+#   sudo systemctl status mira-gesture-worker
+#   sudo systemctl stop mira-gesture-worker
+#   sudo systemctl restart mira-gesture-worker
+#   sudo journalctl -u mira-gesture-worker -f
+
+[Unit]
+Description=Mira Gesture Worker - Hand Gesture Detection
+Documentation=https://github.com/yourusername/mira
+After=network.target docker.service
+Requires=docker.service
+# Wait for Docker services to be healthy
+After=docker.service
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/mira/gesture-worker
+
+# Environment variables
+Environment="MIRA_ENV=pi"
+Environment="REDIS_URL=redis://localhost:6379"
+Environment="CONTROL_PLANE_URL=http://localhost:8090"
+Environment="PYTHONUNBUFFERED=1"
+
+# Use virtual environment Python
+ExecStart=/home/pi/mira/gesture-worker/.venv/bin/python src/gesture_worker_full.py
+
+# Restart on failure
+Restart=on-failure
+RestartSec=5s
+
+# Give up after 5 restart attempts in 60 seconds
+StartLimitInterval=60
+StartLimitBurst=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mira-gesture-worker
+
+# Security hardening (optional)
+# NoNewPrivileges=true
+# PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+

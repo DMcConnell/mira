@@ -1,58 +1,85 @@
+"""
+Vision WebSocket - Subscribe to Redis vision channel and forward to clients.
+Receives real-time gesture detection data from gesture-worker.
+"""
+
 import asyncio
-from datetime import datetime, timezone
+import json
+import os
+from typing import Set
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-
-from app.models.app_wide import VisionIntent
 
 router = APIRouter()
 
-# Mock gestures to cycle through
-MOCK_GESTURES = ["idle", "palm", "swipe_left", "swipe_right", "fist"]
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+VISION_CHANNEL = "mira:vision"
+
+# Store all connected WebSocket clients
+vision_clients: Set[WebSocket] = set()
+
+
+async def redis_vision_subscriber():
+    """
+    Background task that subscribes to Redis vision channel
+    and forwards vision intents to all WebSocket clients.
+    """
+    while True:
+        try:
+            r = await aioredis.from_url(REDIS_URL, decode_responses=True)
+            pubsub = r.pubsub()
+            await pubsub.subscribe(VISION_CHANNEL)
+
+            print(f"[Vision WS] Subscribed to Redis channel: {VISION_CHANNEL}")
+
+            async for msg in pubsub.listen():
+                if msg["type"] == "message":
+                    try:
+                        data = json.loads(msg["data"])
+                        # Broadcast to all connected clients
+                        for client in list(vision_clients):
+                            try:
+                                await client.send_json(data)
+                            except Exception as e:
+                                print(f"[Vision WS] Error sending to client: {e}")
+                                vision_clients.discard(client)
+                    except json.JSONDecodeError as e:
+                        print(f"[Vision WS] Error decoding message: {e}")
+                    except Exception as e:
+                        print(f"[Vision WS] Error processing message: {e}")
+
+        except Exception as e:
+            print(f"[Vision WS] Redis connection error: {e}")
+            # Retry after delay
+            await asyncio.sleep(5)
 
 
 @router.websocket("/ws/vision")
 async def vision_websocket(websocket: WebSocket):
     """
-    WebSocket endpoint that sends mock vision intents.
-    Cycles through gestures every 2 seconds with varying confidence.
+    WebSocket endpoint for real-time vision/gesture updates.
+    Clients connect here to receive gesture detection data from the gesture-worker.
     """
     await websocket.accept()
+    vision_clients.add(websocket)
 
-    gesture_index = 0
-    armed = False
+    print(f"[Vision WS] Client connected. Total clients: {len(vision_clients)}")
 
     try:
+        # Keep the connection alive and wait for disconnect
         while True:
-            # Get current gesture and cycle to next
-            gesture = MOCK_GESTURES[gesture_index % len(MOCK_GESTURES)]
-            gesture_index += 1
-
-            # Determine if armed (palm gesture arms the system)
-            if gesture == "palm":
-                armed = True
-            elif gesture == "idle":
-                armed = False
-
-            # Create mock vision intent
-            intent = VisionIntent(
-                tsISO=datetime.now(timezone.utc).isoformat(),
-                gesture=gesture,
-                confidence=0.85 if gesture != "idle" else 0.95,
-                armed=armed,
-            )
-
-            # Send to client
-            await websocket.send_json(intent.dict())
-
-            # Wait 2 seconds before next update
-            await asyncio.sleep(2)
+            # We could receive messages from the client here if needed
+            # For now, just wait for disconnect
+            await websocket.receive_text()
 
     except WebSocketDisconnect:
-        print("Vision WebSocket client disconnected")
+        print(f"[Vision WS] Client disconnected")
     except Exception as e:
-        print(f"Vision WebSocket error: {e}")
+        print(f"[Vision WS] Error: {e}")
     finally:
+        vision_clients.discard(websocket)
+        print(f"[Vision WS] Client removed. Total clients: {len(vision_clients)}")
         try:
             await websocket.close()
         except Exception:
