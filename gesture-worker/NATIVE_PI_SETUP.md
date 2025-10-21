@@ -51,11 +51,11 @@ sudo raspi-config
 ```bash
 cd ~/mira/gesture-worker
 
-# Create virtual environment (recommended)
-python3 -m venv .venv
+# Create virtual environment with system packages access (required for picamera2)
+python3 -m venv --system-site-packages .venv
 source .venv/bin/activate
 
-# Install dependencies
+# Install dependencies (picamera2 will use system version)
 pip install --upgrade pip
 pip install -r requirements/base.txt -r requirements/pi.txt
 ```
@@ -326,13 +326,30 @@ docker-compose logs control-plane
 curl http://localhost:8090/health
 ```
 
-### Picamera2 Import Error
+### Picamera2 Import Error or libcamera Version Mismatch
+
+**Error: `libcamera version v0.5.X mismatch`**
+
+This happens when pip tries to install picamera2 from source. Solution:
 
 ```bash
-# Reinstall system packages
-sudo apt-get install --reinstall python3-picamera2 python3-libcamera
+# Remove pip-installed version
+pip uninstall picamera2 -y
 
-# Check Python can import it
+# Reinstall system packages
+sudo apt-get install --reinstall python3-picamera2 python3-libcamera libcamera-apps
+
+# Recreate venv with system packages access
+deactivate  # Exit current venv
+rm -rf .venv
+python3 -m venv --system-site-packages .venv
+source .venv/bin/activate
+
+# Reinstall dependencies (will use system picamera2)
+pip install --upgrade pip
+pip install -r requirements/base.txt -r requirements/pi.txt
+
+# Verify it works
 python3 -c "from picamera2 import Picamera2; print('OK')"
 ```
 

@@ -68,7 +68,7 @@ def open_capture(width=640, height=360, fps=30):
             return cap
     else:
         # macOS (and generic USB cams)
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(1)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
         cap.set(cv2.CAP_PROP_FPS, fps)
@@ -103,7 +103,7 @@ class GestureWorker:
         # MediaPipe Hands
         self.hands = mp_hands.Hands(
             model_complexity=0,
-            max_num_hands=2,
+            max_num_hands=4,
             min_detection_confidence=0.4,
             min_tracking_confidence=0.4,
         )

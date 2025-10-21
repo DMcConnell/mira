@@ -64,14 +64,24 @@ sudo apt-get install -y \
 # Set environment for Pi
 export MIRA_ENV=pi
 
-# Install Pi-specific dependencies
+# Create venv with system packages access (IMPORTANT: use --system-site-packages)
+python3 -m venv --system-site-packages .venv
+source .venv/bin/activate
+
+# Install Pi-specific dependencies (uses system picamera2)
 pip install -r requirements/base.txt -r requirements/pi.txt
 
 # Run
 python src/gesture_worker_full.py
 ```
 
-**Note**: When running in Docker on Pi, the GStreamer fallback is used automatically (no manual setup needed).
+**Important Notes**:
+
+- Use `--system-site-packages` when creating the venv to access system-installed picamera2
+- Do NOT install picamera2 via pip (causes libcamera version conflicts)
+- When running in Docker on Pi, the GStreamer fallback is used automatically (no manual setup needed)
+
+See [NATIVE_PI_SETUP.md](./NATIVE_PI_SETUP.md) for detailed setup instructions.
 
 ## Supported Gestures
 

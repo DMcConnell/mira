@@ -39,7 +39,7 @@ echo
 # Check if venv exists
 if [[ ! -d ".venv" ]]; then
     echo -e "${YELLOW}Virtual environment not found. Creating...${NC}"
-    python3 -m venv .venv
+    python3 -m venv --system-site-packages .venv
     source .venv/bin/activate
     pip install --upgrade pip
     pip install -r requirements/base.txt -r requirements/pi.txt

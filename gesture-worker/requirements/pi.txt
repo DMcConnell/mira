@@ -1,2 +1,4 @@
 opencv-python-headless>=4.10
-picamera2>=0.3
+# picamera2 - Use system-installed version (python3-picamera2)
+# Install with: sudo apt-get install -y python3-picamera2 python3-libcamera
+# Create venv with: python3 -m venv --system-site-packages .venv
