@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import Card from '../../components/Card';
-import { getVisionSnapshotUrl, getVisionWebSocketUrl } from '../../lib/api';
+import { getVisionWebSocketUrl } from '../../lib/api';
 import type { VisionIntent } from '../../lib/types';
 
 interface VisionPanelProps {
@@ -63,7 +63,7 @@ export const VisionPanel: React.FC<VisionPanelProps> = ({
         {showPreview && (
           <div className='relative'>
             <img
-              src={getVisionSnapshotUrl()}
+              src={getVisionWebSocketUrl()}
               alt='Vision snapshot'
               className='w-full rounded-lg border border-[#27272a]'
             />

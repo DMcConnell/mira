@@ -1,18 +1,25 @@
 """
-Production Gesture Worker
+Production Gesture Worker - Enhanced for Phase A
 Captures video, detects hand gestures, and emits both:
-1. Raw gesture data to Redis (for /ws/vision streaming)
+1. Classified gesture data to Redis (for /ws/vision streaming)
 2. Debounced commands to Control Plane (for state changes)
+
+Supports:
+- Multiple hands (left/right)
+- Pinch, two-finger gestures
+- Velocity and steadyMs tracking per hand
+- GN armed computation (two-hand modifier model)
 """
 
 import asyncio
+import base64
 import json
 import os
 import time
 import uuid
 from collections import deque
 from datetime import datetime, timezone
-from typing import Deque, Optional, Tuple
+from typing import Deque, Dict, Optional, Tuple
 
 import cv2
 import httpx
@@ -20,11 +27,18 @@ import mediapipe as mp
 import numpy as np
 import redis.asyncio as aioredis
 
+# Constants from plan
+GN_STEADY_MS = 250  # steady open hand duration for GN armed
+GN_HYSTERESIS_MS = 120  # prevent flicker in GN armed state
+PINCH_THRESHOLD = 0.05  # normalized distance threshold for pinch detection
+
 # Environment configuration
 ENV = os.getenv("MIRA_ENV", "mac")  # "mac" or "pi"
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 CONTROL_PLANE_URL = os.getenv("CONTROL_PLANE_URL", "http://localhost:8090")
+SHOW_PREVIEW_WINDOW = os.getenv("SHOW_PREVIEW_WINDOW", "false").lower() == "true"
 VISION_CHANNEL = "mira:vision"  # Redis channel for raw vision data
+SNAPSHOT_KEY = "mira:vision:snapshot"  # Redis key for latest frame snapshot
 
 # MediaPipe setup
 mp_hands = mp.solutions.hands
@@ -75,13 +89,66 @@ def open_capture(width=640, height=360, fps=30):
         return cap
 
 
+class HandTracker:
+    """Tracks individual hand state: pose, velocity, steadyMs"""
+
+    def __init__(self):
+        self.pose = "unknown"
+        self.pose_start_time = 0.0
+        self.last_centroid = (0.0, 0.0)
+        self.velocity_history: Deque[Tuple[float, float, float]] = deque(
+            maxlen=5
+        )  # (time, x, y)
+
+    def update_pose(self, new_pose: str, current_time: float):
+        """Update pose and track steady time"""
+        if new_pose != self.pose:
+            self.pose = new_pose
+            self.pose_start_time = current_time
+
+    def get_steady_ms(self, current_time: float) -> int:
+        """Get how long the hand has been in current pose (ms)"""
+        if self.pose_start_time == 0:
+            return 0
+        return int((current_time - self.pose_start_time) * 1000)
+
+    def update_velocity(self, centroid: Tuple[float, float], current_time: float):
+        """Update velocity based on centroid movement"""
+        if self.last_centroid == (0.0, 0.0):
+            self.last_centroid = centroid
+            return
+
+        dt = current_time - (
+            self.velocity_history[-1][0] if self.velocity_history else current_time
+        )
+        if dt > 0:
+            dx = centroid[0] - self.last_centroid[0]
+            dy = centroid[1] - self.last_centroid[1]
+            vx = dx / dt if dt > 0 else 0.0
+            vy = dy / dt if dt > 0 else 0.0
+            mag = np.sqrt(vx * vx + vy * vy)
+
+            self.velocity_history.append((current_time, vx, vy))
+            self.last_centroid = centroid
+
+    def get_velocity(self) -> Dict[str, float]:
+        """Get current velocity (x, y, magnitude)"""
+        if not self.velocity_history:
+            return {"x": 0.0, "y": 0.0, "mag": 0.0}
+
+        # Use most recent velocity
+        _, vx, vy = self.velocity_history[-1]
+        mag = np.sqrt(vx * vx + vy * vy)
+        return {"x": float(vx), "y": float(vy), "mag": float(mag)}
+
+
 class GestureWorker:
     """
-    Gesture detection worker that:
-    1. Captures video frames
-    2. Runs MediaPipe hand detection
-    3. Classifies static (palm, fist, point) and dynamic (swipe) gestures
-    4. Publishes raw data to Redis for UI streaming
+    Enhanced gesture detection worker that:
+    1. Tracks multiple hands independently
+    2. Detects pinch, two-finger gestures
+    3. Computes GN armed state (two-hand modifier)
+    4. Publishes classified gestures to Redis
     5. Sends debounced commands to Control Plane
     """
 
@@ -108,12 +175,19 @@ class GestureWorker:
             min_tracking_confidence=0.4,
         )
 
+        # Hand tracking (by MediaPipe hand ID)
+        self.hand_trackers: Dict[int, HandTracker] = {}
+
         # Gesture tracking
         self.centroid_buffer: Deque[Tuple[float, float]] = deque(maxlen=16)
         self.last_gesture = "idle"
         self.last_command_time = 0
         self.cooldown_duration = 0.5  # seconds between commands
-        self.armed = False
+
+        # GN armed state tracking
+        self.gn_armed = False
+        self.prev_gn_armed = False
+        self.prev_gn_time = 0.0
 
         # Redis client (will be initialized async)
         self.redis: Optional[aioredis.Redis] = None
@@ -121,55 +195,82 @@ class GestureWorker:
         # HTTP client for Control Plane
         self.http_client: Optional[httpx.AsyncClient] = None
 
-    def compute_centroid_x(self, landmarks) -> float:
-        """Compute normalized x-coordinate of hand centroid"""
+        # Frame snapshot publishing (throttled to ~10 FPS)
+        self.last_snapshot_time = 0.0
+        self.snapshot_interval = 0.1  # ~10 FPS
+
+    def compute_centroid(self, landmarks) -> Tuple[float, float]:
+        """Compute normalized (x, y) centroid of hand"""
         xs = [lm.x for lm in landmarks.landmark]
-        return float(np.mean(xs))
+        ys = [lm.y for lm in landmarks.landmark]
+        return float(np.mean(xs)), float(np.mean(ys))
+
+    def compute_distance(self, p1, p2) -> float:
+        """Compute normalized distance between two points"""
+        dx = p1.x - p2.x
+        dy = p1.y - p2.y
+        return np.sqrt(dx * dx + dy * dy)
 
     def classify_static_gesture(self, landmarks) -> str:
         """
         Classify static hand gestures based on finger extension.
-        Returns: 'palm', 'fist', 'point', or 'idle'
+        Returns: 'open', 'fist', 'pinch', 'twoFinger', or 'unknown'
         """
         # Get landmark positions (normalized 0-1)
         # Index finger
-        idx_tip_y = landmarks.landmark[8].y
-        idx_pip_y = landmarks.landmark[6].y
+        idx_tip = landmarks.landmark[8]
+        idx_pip = landmarks.landmark[6]
+        idx_mcp = landmarks.landmark[5]
 
         # Middle finger
-        mid_tip_y = landmarks.landmark[12].y
-        mid_pip_y = landmarks.landmark[10].y
+        mid_tip = landmarks.landmark[12]
+        mid_pip = landmarks.landmark[10]
+        mid_mcp = landmarks.landmark[9]
 
         # Ring finger
-        ring_tip_y = landmarks.landmark[16].y
-        ring_pip_y = landmarks.landmark[14].y
+        ring_tip = landmarks.landmark[16]
+        ring_pip = landmarks.landmark[14]
 
         # Pinky finger
-        pinky_tip_y = landmarks.landmark[20].y
-        pinky_pip_y = landmarks.landmark[18].y
+        pinky_tip = landmarks.landmark[20]
+        pinky_pip = landmarks.landmark[18]
 
-        # Thumb (different check - compare tip to MCP)
-        thumb_tip_x = landmarks.landmark[4].x
-        thumb_mcp_x = landmarks.landmark[2].x
-        thumb_extended = abs(thumb_tip_x - thumb_mcp_x) > 0.1
+        # Thumb
+        thumb_tip = landmarks.landmark[4]
+        thumb_ip = landmarks.landmark[3]
 
         # Check if fingers are extended (tip above pip in image coords)
+        idx_extended = idx_tip.y < idx_pip.y
+        mid_extended = mid_tip.y < mid_pip.y
+        ring_extended = ring_tip.y < ring_pip.y
+        pinky_extended = pinky_tip.y < pinky_pip.y
+        thumb_extended = abs(thumb_tip.x - thumb_ip.x) > 0.1
+
         fingers_extended = [
-            idx_tip_y < idx_pip_y,
-            mid_tip_y < mid_pip_y,
-            ring_tip_y < ring_pip_y,
-            pinky_tip_y < pinky_pip_y,
+            idx_extended,
+            mid_extended,
+            ring_extended,
+            pinky_extended,
         ]
 
+        # Check for pinch (thumb and index tip close together)
+        pinch_distance = self.compute_distance(thumb_tip, idx_tip)
+        is_pinch = pinch_distance < PINCH_THRESHOLD
+
+        # Check for two-finger (index and middle extended, others closed)
+        is_two_finger = idx_extended and mid_extended and not any(fingers_extended[2:])
+
         # Classify
-        if all(fingers_extended) and thumb_extended:
-            return "palm"
+        if is_pinch and not idx_extended:
+            return "pinch"
+        elif is_two_finger:
+            return "twoFinger"
+        elif all(fingers_extended) and thumb_extended:
+            return "open"
         elif not any(fingers_extended) and not thumb_extended:
             return "fist"
-        elif fingers_extended[0] and not any(fingers_extended[1:]):
-            return "point"
         else:
-            return "idle"
+            return "unknown"
 
     def detect_swipe(self, current_time: float) -> Optional[str]:
         """
@@ -185,16 +286,10 @@ class GestureWorker:
         dx = x1 - x0
         duration = t1 - t0
 
-        # Thresholds (tunable) - made more forgiving for testing
-        MIN_DISPLACEMENT = 0.15  # 15% of screen width (reduced from 20%)
-        MIN_DURATION = 0.50  # at least 100ms (reduced from 150ms)
-        MAX_DURATION = 2.00  # no more than 600ms (increased from 500ms)
-
-        # Debug output every 10 frames when buffer is full
-        if len(self.centroid_buffer) >= 10 and int(current_time * 10) % 10 == 0:
-            print(
-                f"  Buffer: {len(self.centroid_buffer)} frames, dx={dx:.3f}, duration={duration:.3f}s"
-            )
+        # Thresholds
+        MIN_DISPLACEMENT = 0.15  # 15% of screen width
+        MIN_DURATION = 0.50  # at least 500ms
+        MAX_DURATION = 2.00  # no more than 2s
 
         if (
             duration > MIN_DURATION
@@ -208,8 +303,91 @@ class GestureWorker:
 
         return None
 
-    async def publish_vision_intent(self, gesture: str, confidence: float):
-        """Publish raw gesture data to Redis for real-time streaming"""
+    def compute_gn_armed(
+        self, hands_data: Dict[str, Dict], current_time: float
+    ) -> bool:
+        """
+        Compute GN armed state based on two-hand modifier model.
+        Either hand can be the modifier (steady open hand).
+        """
+        # Find steady open hand (≥ 250ms)
+        steady_hand = None
+        other_hand = None
+
+        for hand_id, hand_data in hands_data.items():
+            if hand_data["pose"] == "open" and hand_data["steadyMs"] >= GN_STEADY_MS:
+                steady_hand = hand_id
+                break
+
+        # Find other hand (not the steady one, and performing a gesture)
+        for hand_id, hand_data in hands_data.items():
+            if hand_id != steady_hand and hand_data["pose"] != "unknown":
+                other_hand = hand_id
+                break
+
+        if steady_hand and other_hand:
+            # Potential GN armed
+            if not self.prev_gn_armed:
+                # Apply hysteresis: require 250ms steady before arming
+                if hands_data[steady_hand]["steadyMs"] >= GN_STEADY_MS:
+                    return True
+            else:
+                # Already armed - apply hysteresis to prevent flicker
+                if hands_data[steady_hand]["steadyMs"] < (
+                    GN_STEADY_MS - GN_HYSTERESIS_MS
+                ):
+                    return False
+                return True
+
+        # Disarm if no steady hand or both hands gesturing
+        if self.prev_gn_armed:
+            # Hysteresis: keep armed for 120ms after condition fails
+            if (current_time - self.prev_gn_time) * 1000 < GN_HYSTERESIS_MS:
+                return True
+
+        return False
+
+    def encode_frame_as_jpeg(self, frame) -> Optional[str]:
+        """Encode frame as base64-encoded JPEG"""
+        try:
+            # Encode frame as JPEG (quality 80 for faster encoding while maintaining visual quality)
+            success, encoded = cv2.imencode(
+                ".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80]
+            )
+            if not success:
+                return None
+            # Convert to base64
+            jpeg_bytes = encoded.tobytes()
+            base64_str = base64.b64encode(jpeg_bytes).decode("utf-8")
+            return base64_str
+        except Exception as e:
+            print(f"Error encoding frame: {e}")
+            return None
+
+    async def publish_frame_snapshot(self, frame, current_time: float):
+        """Publish annotated frame as base64 JPEG to Redis (throttled)"""
+        if not self.redis:
+            return
+
+        # Throttle to ~10 FPS
+        if current_time - self.last_snapshot_time < self.snapshot_interval:
+            return
+
+        base64_jpeg = self.encode_frame_as_jpeg(frame)
+        if not base64_jpeg:
+            return
+
+        try:
+            # Store in Redis with 2 second TTL (will be refreshed if worker is alive)
+            await self.redis.set(SNAPSHOT_KEY, base64_jpeg, ex=2)
+            self.last_snapshot_time = current_time
+        except Exception as e:
+            print(f"Error publishing frame snapshot: {e}")
+
+    async def publish_vision_intent(
+        self, gesture: str, confidence: float, gn_armed: bool
+    ):
+        """Publish classified gesture data to Redis for real-time streaming"""
         if not self.redis:
             return
 
@@ -217,13 +395,37 @@ class GestureWorker:
             "tsISO": datetime.now(timezone.utc).isoformat(),
             "gesture": gesture,
             "confidence": confidence,
-            "armed": self.armed,
+            "armed": gn_armed,  # Keep for backward compatibility
+            "gnArmed": gn_armed,  # New field
         }
 
         try:
             await self.redis.publish(VISION_CHANNEL, json.dumps(intent))
         except Exception as e:
             print(f"Error publishing vision intent: {e}")
+
+    async def send_gn_armed_state(self, gn_armed: bool):
+        """Send GN armed state to Control Plane"""
+        if not self.http_client:
+            return
+
+        command = {
+            "id": str(uuid.uuid4()),
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "source": "gesture",
+            "action": "set_gn_armed",
+            "payload": {"gnArmed": gn_armed},
+        }
+
+        try:
+            response = await self.http_client.post(
+                f"{CONTROL_PLANE_URL}/command",
+                json=command,
+                timeout=2.0,
+            )
+            response.raise_for_status()
+        except Exception as e:
+            print(f"Error sending GN armed state: {e}")
 
     async def send_command(self, action: str, payload: dict):
         """Send debounced command to Control Plane"""
@@ -257,42 +459,82 @@ class GestureWorker:
 
         gesture = "idle"
         confidence = 0.0
-        hand_detected = False
+        hands_data = {}
 
         if results.multi_hand_landmarks:
-            hand_detected = True
-            # Use first detected hand
-            hand_landmarks = results.multi_hand_landmarks[0]
+            # Process all detected hands
+            for hand_idx, hand_landmarks in enumerate(results.multi_hand_landmarks):
+                hand_label = (
+                    results.multi_handedness[hand_idx].classification[0].label
+                )  # "Left" or "Right"
+                hand_id = hand_label.lower()
 
-            # Classify static gesture
-            static_gesture = self.classify_static_gesture(hand_landmarks)
-            gesture = static_gesture
-            confidence = 0.85 if gesture != "idle" else 0.95
+                # Initialize tracker if needed
+                if hand_id not in self.hand_trackers:
+                    self.hand_trackers[hand_id] = HandTracker()
 
-            # Update armed state (palm gesture arms the system)
-            if gesture == "palm":
-                self.armed = True
-            elif gesture == "idle":
-                self.armed = False
+                tracker = self.hand_trackers[hand_id]
 
-            # Track centroid for swipe detection
-            cx = self.compute_centroid_x(hand_landmarks)
-            self.centroid_buffer.append((current_time, cx))
+                # Classify static gesture
+                static_gesture = self.classify_static_gesture(hand_landmarks)
+                tracker.update_pose(static_gesture, current_time)
 
-            # Detect dynamic gestures (swipes) - always check, not just when armed
+                # Compute centroid and velocity
+                centroid = self.compute_centroid(hand_landmarks)
+                tracker.update_velocity(centroid, current_time)
+
+                # Get hand state
+                steady_ms = tracker.get_steady_ms(current_time)
+                velocity = tracker.get_velocity()
+
+                hands_data[hand_id] = {
+                    "present": True,
+                    "pose": static_gesture,
+                    "steadyMs": steady_ms,
+                    "velocity": velocity,
+                }
+
+                # Track centroid for swipe detection (use first hand)
+                if hand_idx == 0:
+                    cx, _ = centroid
+                    self.centroid_buffer.append((current_time, cx))
+
+                # Draw landmarks on frame (for debugging/preview)
+                mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+
+            # Determine primary gesture (use first hand for now)
+            if hands_data:
+                first_hand = list(hands_data.values())[0]
+                gesture = first_hand["pose"]
+                confidence = 0.85 if gesture != "idle" else 0.95
+
+            # Detect dynamic gestures (swipes) - always check
             swipe = self.detect_swipe(current_time)
             if swipe:
                 gesture = swipe
                 confidence = 0.90
-                print(
-                    f"SWIPE DETECTED: {swipe} (buffer size: {len(self.centroid_buffer)})"
-                )
 
-            # Draw landmarks on frame (for debugging/preview)
-            mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+        # Mark missing hands as not present
+        for hand_id in list(self.hand_trackers.keys()):
+            if hand_id not in hands_data:
+                hands_data[hand_id] = {
+                    "present": False,
+                    "pose": "unknown",
+                    "steadyMs": 0,
+                    "velocity": {"x": 0.0, "y": 0.0, "mag": 0.0},
+                }
 
-        # Always publish raw vision data for streaming
-        await self.publish_vision_intent(gesture, confidence)
+        # Compute GN armed state
+        self.gn_armed = self.compute_gn_armed(hands_data, current_time)
+
+        # Send GN armed state if it changed
+        if self.gn_armed != self.prev_gn_armed:
+            await self.send_gn_armed_state(self.gn_armed)
+            self.prev_gn_armed = self.gn_armed
+            self.prev_gn_time = current_time
+
+        # Always publish classified gesture data for streaming
+        await self.publish_vision_intent(gesture, confidence, self.gn_armed)
 
         # Send command if gesture changed and cooldown expired
         time_since_last_command = current_time - self.last_command_time
@@ -305,13 +547,14 @@ class GestureWorker:
             payload = {
                 "gesture": gesture,
                 "confidence": confidence,
+                "gnArmed": self.gn_armed,
             }
             await self.send_command(action, payload)
             self.last_command_time = current_time
 
         self.last_gesture = gesture
 
-        return frame, gesture, confidence
+        return frame, gesture, confidence, self.gn_armed
 
     async def run(self):
         """Main worker loop"""
@@ -341,7 +584,7 @@ class GestureWorker:
                 current_time = time.time()
 
                 # Process frame
-                frame, gesture, confidence = await self.process_frame(
+                frame, gesture, confidence, gn_armed = await self.process_frame(
                     frame, current_time
                 )
 
@@ -370,19 +613,21 @@ class GestureWorker:
                     (255, 255, 255),
                     2,
                 )
-                # Show buffer size and armed state
                 cv2.putText(
                     frame,
-                    f"Buffer: {len(self.centroid_buffer)}/16 | Armed: {self.armed}",
+                    f"GN Armed: {gn_armed}",
                     (10, 80),
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    (0, 255, 255) if self.armed else (100, 100, 100),
-                    1,
+                    0.6,
+                    (0, 255, 0) if gn_armed else (100, 100, 100),
+                    2,
                 )
 
-                # Show frame (disable in production/headless mode)
-                if ENV == "mac":
+                # Publish frame snapshot to Redis (throttled to ~10 FPS)
+                await self.publish_frame_snapshot(frame, current_time)
+
+                # Show frame window (optional, disabled by default - use browser preview instead)
+                if SHOW_PREVIEW_WINDOW:
                     cv2.imshow("Gesture Worker", frame)
                     if cv2.waitKey(1) & 0xFF == 27:  # ESC to exit
                         break

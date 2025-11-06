@@ -9,8 +9,10 @@ import type {
 } from './types';
 import { authService } from './auth';
 
-// Get base URL from environment variable, default to localhost:8080
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+// Get base URL from environment variable
+// In development (when VITE_API_BASE_URL is not set), use empty string to leverage Vite proxy
+// In production, use the provided base URL or default to empty (relative URLs)
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 // Create axios instance with default config
 const api = axios.create({
@@ -102,21 +104,34 @@ export const updateSettings = async (settings: Settings): Promise<Settings> => {
 
 // Vision snapshot URL (for img src)
 export const getVisionSnapshotUrl = (): string => {
-  return `${BASE_URL}/vision/snapshot.jpg`;
+  // Use relative URL in dev (proxy will handle it), absolute in production
+  return BASE_URL ? `${BASE_URL}/vision/snapshot.jpg` : '/vision/snapshot.jpg';
 };
 
 // WebSocket URL for vision
 export const getVisionWebSocketUrl = (): string => {
-  const wsProtocol = BASE_URL.startsWith('https') ? 'wss' : 'ws';
-  const url = BASE_URL.replace(/^https?:\/\//, '');
-  return `${wsProtocol}://${url}/ws/vision`;
+  if (BASE_URL) {
+    // Production: use absolute URL
+    const wsProtocol = BASE_URL.startsWith('https') ? 'wss' : 'ws';
+    const url = BASE_URL.replace(/^https?:\/\//, '');
+    return `${wsProtocol}://${url}/ws/vision`;
+  }
+  // Development: use same origin with WebSocket protocol (Vite proxy will handle it)
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${wsProtocol}//${window.location.host}/ws/vision`;
 };
 
 // WebSocket URL for state updates
 export const getStateWebSocketUrl = (): string => {
-  const wsProtocol = BASE_URL.startsWith('https') ? 'wss' : 'ws';
-  const url = BASE_URL.replace(/^https?:\/\//, '');
-  return `${wsProtocol}://${url}/ws/state`;
+  if (BASE_URL) {
+    // Production: use absolute URL
+    const wsProtocol = BASE_URL.startsWith('https') ? 'wss' : 'ws';
+    const url = BASE_URL.replace(/^https?:\/\//, '');
+    return `${wsProtocol}://${url}/ws/state`;
+  }
+  // Development: use same origin with WebSocket protocol (Vite proxy will handle it)
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${wsProtocol}//${window.location.host}/ws/state`;
 };
 
 // Command API - send commands to Control Plane

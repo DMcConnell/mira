@@ -11,6 +11,10 @@ import {
   TextCommandModal,
   SettingsPanel,
   LoginModal,
+  AppRail,
+  HUD,
+  FocusRing,
+  DebugOverlay,
   type AppMode,
   type ToastType,
 } from './components';
@@ -22,7 +26,12 @@ import type {
   VisionIntent,
   StatePatch,
   AppState,
+  UIState,
+  AppRoute,
+  PrivacyMode,
 } from './lib/types';
+import { sendCommand } from './lib/api';
+import { DwellTracker } from './lib/dwellTracker';
 import {
   getMorningReport,
   createTodo,
@@ -95,8 +104,29 @@ function App() {
     lastUpdate: null,
   });
   const stateWsRef = useRef<WebSocket | null>(null);
-  // State tracking - will be used in future phases
-  const [appState, setAppState] = useState<AppState | null>(null);
+  // State tracking - legacy, kept for backward compatibility
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_, setAppState] = useState<AppState | null>(null);
+
+  // UIState (Phase A & B)
+  const [uiState, setUIState] = useState<UIState>({
+    mode: 'public',
+    appRoute: 'home',
+    focusPath: [],
+    gnArmed: false,
+    debug: { enabled: true },
+    hud: {
+      micOn: false,
+      camOn: false,
+      wsConnected: false,
+      wake: false,
+    },
+  });
+
+  // Dwell tracking
+  const dwellTrackerRef = useRef<DwellTracker | null>(null);
+  const [dwellProgress, setDwellProgress] = useState(0);
+  const [focusTarget] = useState<HTMLElement | null>(null); // TODO: Implement focus target tracking in Phase C
 
   // Show toast helper
   const showToast = useCallback((message: string, type: ToastType = 'info') => {
@@ -111,7 +141,6 @@ function App() {
   // Fetch morning report data
   const fetchMorningReport = useCallback(async () => {
     try {
-      console.log('appState', appState);
       setLoading(true);
       setError(null);
       const startTime = Date.now();
@@ -202,6 +231,28 @@ function App() {
     fetchInitialState();
   }, [isAuthenticated]);
 
+  // Initialize dwell tracker
+  useEffect(() => {
+    dwellTrackerRef.current = new DwellTracker();
+    dwellTrackerRef.current.onDwellComplete((targetId) => {
+      // Send select focus command
+      sendCommand({
+        source: 'gesture',
+        action: 'app.selectFocus',
+        payload: { targetId },
+      });
+    });
+
+    // Update dwell progress
+    const interval = setInterval(() => {
+      if (dwellTrackerRef.current) {
+        setDwellProgress(dwellTrackerRef.current.getProgress());
+      }
+    }, 16); // ~60fps
+
+    return () => clearInterval(interval);
+  }, []);
+
   // Apply state patch to current state
   const applyStatePatch = useCallback(
     (patch: StatePatch) => {
@@ -212,8 +263,32 @@ function App() {
         lastUpdate: patch.ts,
       }));
 
-      // Simple path-based state updates
-      // For now, just handle a few common patterns
+      // Handle UI state patches (Phase A & B)
+      if (patch.path.startsWith('/ui/')) {
+        setUIState((prev) => {
+          const newState = { ...prev };
+          const pathParts = patch.path.split('/').filter((p) => p);
+
+          if (pathParts[1] === 'mode') {
+            newState.mode = patch.value as PrivacyMode;
+          } else if (pathParts[1] === 'appRoute') {
+            newState.appRoute = patch.value as AppRoute;
+          } else if (pathParts[1] === 'focusPath') {
+            newState.focusPath = patch.value as string[];
+          } else if (pathParts[1] === 'gnArmed') {
+            newState.gnArmed = patch.value as boolean;
+          } else if (pathParts[1] === 'debug' && pathParts[2] === 'enabled') {
+            newState.debug.enabled = patch.value as boolean;
+          } else if (pathParts[1] === 'hud' && pathParts[2]) {
+            newState.hud[pathParts[2] as keyof typeof newState.hud] =
+              patch.value as boolean;
+          }
+
+          return newState;
+        });
+      }
+
+      // Legacy state patches
       if (patch.path === '/mode') {
         setMode(patch.value as AppMode);
         showToast(`Mode switched to ${patch.value}`, 'info');
@@ -226,7 +301,7 @@ function App() {
         // Update specific todo (not implemented in this phase)
         console.log('Todo update:', patch);
       } else if (patch.path === '/gesture') {
-        // Update gesture state
+        // Update gesture state (legacy)
         setAppState((prev) => ({ ...prev, gesture: patch.value as string }));
       }
 
@@ -409,7 +484,22 @@ function App() {
       const result = await interpretVoice(text);
       console.log('Voice interpretation result:', result);
 
-      // Handle different intents
+      // Send command to Control Plane for Phase A & B intents
+      if (
+        result.intent.startsWith('voice.') ||
+        result.intent.startsWith('system.') ||
+        result.intent.startsWith('app.')
+      ) {
+        await sendCommand({
+          source: 'voice',
+          action: result.action,
+          payload: result.parameters || result.params || {},
+        });
+        showToast(`Command: ${result.intent}`, 'success');
+        return;
+      }
+
+      // Handle legacy intents
       if (result.intent === 'switch_mode') {
         const targetMode = result.params?.mode as AppMode;
         if (targetMode === 'morning' || targetMode === 'ambient') {
@@ -432,8 +522,60 @@ function App() {
     }
   };
 
+  // Handle app selection from rail
+  const handleAppSelect = useCallback(async (app: AppRoute) => {
+    await sendCommand({
+      source: 'gesture',
+      action: 'voice.openApp',
+      payload: { app },
+    });
+  }, []);
+
+  // Update HUD wsConnected based on Control Plane status
+  useEffect(() => {
+    setUIState((prev) => ({
+      ...prev,
+      hud: {
+        ...prev.hud,
+        wsConnected: controlPlaneStatus.connected,
+      },
+    }));
+  }, [controlPlaneStatus.connected]);
+
   return (
     <div className='app-container'>
+      {/* Phase B Components */}
+      <AppRail
+        gnArmed={uiState.gnArmed}
+        currentApp={uiState.appRoute}
+        mode={uiState.mode}
+        onAppSelect={handleAppSelect}
+      />
+      <HUD
+        mode={uiState.mode}
+        micOn={uiState.hud.micOn}
+        camOn={uiState.hud.camOn}
+        wsConnected={uiState.hud.wsConnected}
+        debugEnabled={uiState.debug.enabled}
+        wake={uiState.hud.wake}
+      />
+      <FocusRing
+        targetElement={focusTarget}
+        dwellProgress={dwellProgress}
+        isVisible={focusTarget !== null}
+      />
+      <DebugOverlay
+        enabled={uiState.debug.enabled}
+        uiState={uiState}
+        onClose={() => {
+          sendCommand({
+            source: 'system',
+            action: 'system.toggleDebug',
+            payload: {},
+          });
+        }}
+      />
+
       <header className='app-header'>
         <h1 className='app-title'>Mira</h1>
         <div className='header-controls'>

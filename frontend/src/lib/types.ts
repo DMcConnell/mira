@@ -56,7 +56,10 @@ export interface VoiceInterpretRequest {
 
 export interface VoiceInterpretResponse {
   intent: string;
-  params?: Record<string, unknown>;
+  confidence: number;
+  action: string;
+  parameters: Record<string, unknown>;
+  params?: Record<string, unknown>; // Legacy alias
 }
 
 export interface HealthResponse {
@@ -83,4 +86,59 @@ export interface AppState {
   todos?: Todo[];
   gesture?: string;
   [key: string]: unknown;
+}
+
+// UI State types for Phase A & B
+export type PrivacyMode = 'public' | 'private';
+export type AppRoute =
+  | 'home'
+  | 'weather'
+  | 'email'
+  | 'finance'
+  | 'news'
+  | 'todos'
+  | 'calendar'
+  | 'settings';
+
+export interface UIState {
+  mode: PrivacyMode;
+  appRoute: AppRoute;
+  focusPath: string[];
+  gnArmed: boolean;
+  debug: {
+    enabled: boolean;
+  };
+  hud: {
+    micOn: boolean;
+    camOn: boolean;
+    wsConnected: boolean;
+    wake: boolean;
+  };
+  confirm?: {
+    text: string;
+    action: Command;
+    expiresAt: number;
+  };
+}
+
+export interface SensorsState {
+  hands: Record<
+    string,
+    {
+      present: boolean;
+      pose: 'open' | 'fist' | 'pinch' | 'twoFinger' | 'unknown';
+      velocity: { x: number; y: number; mag: number };
+      steadyMs: number;
+    }
+  >;
+  voice: {
+    heardWake: boolean;
+    intent?: string;
+    transcript?: string;
+    confidence?: number;
+  };
+  perf: {
+    fps: number;
+    latencies: { reducerMs: number; wsMs: number };
+  };
 }

@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -15,11 +16,35 @@ from app.api import (
 from app.ws import state as state_ws
 from app.ws import vision as vision_ws
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Start background tasks on application startup."""
+    # Start Redis subscriber for state updates
+    state_task = asyncio.create_task(state_ws.redis_subscriber())
+    # Start Redis subscriber for vision updates
+    vision_task = asyncio.create_task(vision_ws.redis_vision_subscriber())
+    yield
+    # Stop background tasks on application shutdown
+    state_task.cancel()
+    vision_task.cancel()
+    # Wait for tasks to finish cleanup
+    try:
+        await state_task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await vision_task
+    except asyncio.CancelledError:
+        pass
+
+
 # Create FastAPI application
 app = FastAPI(
     title="Mira Smart Mirror API",
     description="Backend API for the Mira smart mirror application",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Configure CORS
@@ -44,15 +69,6 @@ app.include_router(vision.router, tags=["vision"])
 # Include WebSocket routers
 app.include_router(state_ws.router, tags=["websocket"])
 app.include_router(vision_ws.router, tags=["websocket"])
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Start background tasks on application startup."""
-    # Start Redis subscriber for state updates
-    asyncio.create_task(state_ws.redis_subscriber())
-    # Start Redis subscriber for vision updates
-    asyncio.create_task(vision_ws.redis_vision_subscriber())
 
 
 @app.get("/")
