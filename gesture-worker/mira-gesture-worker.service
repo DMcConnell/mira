@@ -34,7 +34,7 @@ Environment="CONTROL_PLANE_URL=http://localhost:8090"
 Environment="PYTHONUNBUFFERED=1"
 
 # Use virtual environment Python
-ExecStart=/home/pi/mira/gesture-worker/.venv/bin/python src/gesture_worker_full.py
+ExecStart=/home/pi/mira/gesture-worker/.venv/bin/python -m src.gesture_worker
 
 # Restart on failure
 Restart=on-failure

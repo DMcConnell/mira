@@ -94,5 +94,5 @@ echo
 echo -e "${GREEN}🚀 Starting Gesture Worker...${NC}"
 echo -e "${YELLOW}Press Ctrl+C to stop${NC}\n"
 
-python src/gesture_worker_full.py
+python -m src.gesture_worker
 

@@ -19,5 +19,5 @@ echo "  REDIS_URL: $REDIS_URL"
 echo "  CONTROL_PLANE_URL: $CONTROL_PLANE_URL"
 echo ""
 
-python src/gesture_worker_full.py
+python -m src.gesture_worker
 
